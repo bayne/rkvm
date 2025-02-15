@@ -11,7 +11,8 @@ pub struct Config {
     pub certificate: PathBuf,
     pub key: PathBuf,
     pub password: String,
-    pub switch_keys: HashSet<SwitchKey>,
+    pub switch_keys_1: HashSet<SwitchKey>,
+    pub switch_keys_2: HashSet<SwitchKey>,
     pub propagate_switch_keys: Option<bool>,
 }
 

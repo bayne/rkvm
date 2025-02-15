@@ -37,7 +37,8 @@ pub async fn run(
     listen: SocketAddr,
     acceptor: TlsAcceptor,
     password: &str,
-    switch_keys: &HashSet<Key>,
+    switch_keys_1: &HashSet<Key>,
+    switch_keys_2: &HashSet<Key>,
     propagate_switch_keys: bool,
 ) -> Result<(), Error> {
     let listener = TcpListener::bind(&listen).await.map_err(Error::Network)?;
@@ -49,7 +50,8 @@ pub async fn run(
     let mut current = 0;
     let mut previous = 0;
     let mut changed = false;
-    let mut pressed_keys = HashSet::new();
+    let mut pressed_keys_1 = HashSet::new();
+    let mut pressed_keys_2 = HashSet::new();
 
     let (events_sender, mut events_receiver) = mpsc::channel(1);
 
@@ -112,6 +114,11 @@ pub async fn run(
                 let abs = interceptor.abs().collect::<HashMap<_,_>>();
                 let keys = interceptor.key().collect::<HashSet<_>>();
                 let repeat = interceptor.repeat();
+
+                // my keyboard
+                if vendor != 12951 && product != 18804 {
+                    continue;
+                }
 
                 for (_, (sender, _)) in &clients {
                     let update = Update::CreateDevice {
@@ -189,43 +196,32 @@ pub async fn run(
                     let mut press = false;
 
                     if let Event::Key(KeyEvent { key, down }) = event {
-                        if switch_keys.contains(&key) {
+                        if switch_keys_1.contains(&key) {
                             press = true;
 
                             match down {
-                                true => pressed_keys.insert(key),
-                                false => pressed_keys.remove(&key),
+                                true => pressed_keys_1.insert(key),
+                                false => pressed_keys_1.remove(&key),
+                            };
+                        }
+                        if switch_keys_2.contains(&key) {
+                            press = true;
+
+                            match down {
+                                true => pressed_keys_2.insert(key),
+                                false => pressed_keys_2.remove(&key),
                             };
                         }
                     }
 
-                    // Who to send this event to.
-                    let mut idx = current;
-
                     if press {
-                        if pressed_keys.len() == switch_keys.len() {
-                            let exists = |idx| idx == 0 || clients.contains(idx - 1);
-                            loop {
-                                current = (current + 1) % (clients.len() + 1);
-                                if exists(current) {
-                                    break;
-                                }
-                            }
-
-                            previous = idx;
-                            changed = true;
-
-                            if current != 0 {
-                                tracing::info!(idx = %current, addr = %clients[current - 1].1, "Switched client");
-                            } else {
-                                tracing::info!(idx = %current, "Switched client");
-                            }
-                        } else if changed {
-                            idx = previous;
-
-                            if pressed_keys.is_empty() {
-                                changed = false;
-                            }
+                        if pressed_keys_1.len() == switch_keys_1.len() {
+                            current = 0;
+                            tracing::info!(idx = %current, "Switched to host");
+                        }
+                        if pressed_keys_2.len() == switch_keys_2.len() {
+                            current = 1;
+                            tracing::info!(idx = %current, "Switched client");
                         }
                     }
 
@@ -238,7 +234,7 @@ pub async fn run(
                         .chain(press.then_some(Event::Sync(SyncEvent::All)));
 
                     // Index 0 - special case to keep the modular arithmetic above working.
-                    if idx == 0 {
+                    if current == 0 || clients.len() == 0 {
                         // We do a try_send() here rather than a "blocking" send in order to prevent deadlocks.
                         // In this scenario, the interceptor task is sending events to the main task,
                         // while the main task is simultaneously sending events back to the interceptor.
@@ -254,12 +250,9 @@ pub async fn run(
                     }
 
                     for event in events {
-                        if clients[idx - 1].0.send(Update::Event { id, event }).await.is_err() {
-                            clients.remove(idx - 1);
-
-                            if current == idx {
-                                current = 0;
-                            }
+                        if clients[0].0.send(Update::Event { id, event }).await.is_err() {
+                            clients.remove(0);
+                            current = 0;
                         }
                     }
                 }
