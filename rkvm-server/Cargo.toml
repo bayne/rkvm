@@ -11,6 +11,7 @@ edition = "2021"
 tokio = { version = "1.0.1", features = ["macros", "time", "fs", "net", "signal", "rt-multi-thread", "sync"] }
 serde = { version = "1.0.117", features = ["derive"] }
 toml = "0.5.7"
+regex = "1.11.1"
 env_logger = "0.8.1"
 clap = { version = "4.2.2", features = ["derive"] }
 tokio-rustls = "0.24.0"

@@ -3,22 +3,23 @@ use crate::registry::Registry;
 
 use futures::StreamExt;
 use inotify::{Inotify, WatchMask};
+use regex::Regex;
 use std::ffi::OsStr;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
 use tokio::fs;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-const EVENT_PATH: &str = "/dev/input";
+const EVENT_PATH: &str = "/dev/input/by-id";
 
 pub struct Monitor {
     receiver: Receiver<Result<Interceptor, Error>>,
 }
 
 impl Monitor {
-    pub fn new() -> Self {
+    pub fn new(input_id_pattern: Regex) -> Self {
         let (sender, receiver) = mpsc::channel(1);
-        tokio::spawn(monitor(sender));
+        tokio::spawn(monitor(input_id_pattern, sender));
 
         Self { receiver }
     }
@@ -31,7 +32,7 @@ impl Monitor {
     }
 }
 
-async fn monitor(sender: Sender<Result<Interceptor, Error>>) {
+async fn monitor(input_id_pattern: Regex, sender: Sender<Result<Interceptor, Error>>) {
     let run = async {
         let registry = Registry::new();
 
@@ -64,7 +65,9 @@ async fn monitor(sender: Sender<Result<Interceptor, Error>>) {
             if !path
                 .file_name()
                 .and_then(OsStr::to_str)
-                .map_or(false, |name| name.starts_with("event"))
+                .filter(|name| name.contains("event"))
+                .filter(|name| input_id_pattern.is_match(name))
+                .is_some()
             {
                 tracing::debug!("Skipping non event file {:?}", path);
                 continue;

@@ -1,3 +1,4 @@
+use regex::Regex;
 use rkvm_input::abs::{AbsAxis, AbsInfo};
 use rkvm_input::event::Event;
 use rkvm_input::key::{Key, KeyEvent};
@@ -40,16 +41,15 @@ pub async fn run(
     switch_keys_1: &HashSet<Key>,
     switch_keys_2: &HashSet<Key>,
     propagate_switch_keys: bool,
+    input_id_pattern: Regex,
 ) -> Result<(), Error> {
     let listener = TcpListener::bind(&listen).await.map_err(Error::Network)?;
     tracing::info!("Listening on {}", listen);
 
-    let mut monitor = Monitor::new();
+    let mut monitor = Monitor::new(input_id_pattern);
     let mut devices = Slab::<Device>::new();
     let mut clients = Slab::<(Sender<_>, SocketAddr)>::new();
     let mut current = 0;
-    let mut previous = 0;
-    let mut changed = false;
     let mut pressed_keys_1 = HashSet::new();
     let mut pressed_keys_2 = HashSet::new();
 
@@ -114,11 +114,6 @@ pub async fn run(
                 let abs = interceptor.abs().collect::<HashMap<_,_>>();
                 let keys = interceptor.key().collect::<HashSet<_>>();
                 let repeat = interceptor.repeat();
-
-                // my keyboard
-                if vendor != 12951 && product != 18804 {
-                    continue;
-                }
 
                 for (_, (sender, _)) in &clients {
                     let update = Update::CreateDevice {

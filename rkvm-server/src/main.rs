@@ -4,6 +4,7 @@ mod tls;
 
 use clap::Parser;
 use config::Config;
+use regex::Regex;
 use std::future;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -70,9 +71,13 @@ async fn main() -> ExitCode {
     let switch_keys_1 = config.switch_keys_1.into_iter().map(Into::into).collect();
     let switch_keys_2 = config.switch_keys_2.into_iter().map(Into::into).collect();
     let propagate_switch_keys = config.propagate_switch_keys.unwrap_or(true);
+    let input_id_pattern: Regex = config
+        .input_id_pattern
+        .map(|str| Regex::new(&str).unwrap())
+        .unwrap_or_else(|| Regex::new(".+").unwrap());
 
     tokio::select! {
-        result = server::run(config.listen, acceptor, &config.password, &switch_keys_1, &switch_keys_2, propagate_switch_keys) => {
+        result = server::run(config.listen, acceptor, &config.password, &switch_keys_1, &switch_keys_2, propagate_switch_keys, input_id_pattern) => {
             if let Err(err) = result {
                 tracing::error!("Error: {}", err);
                 return ExitCode::FAILURE;
