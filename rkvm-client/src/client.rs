@@ -13,6 +13,10 @@ use tokio::net::TcpStream;
 use tokio::time;
 use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
+use rkvm_input::event::Event;
+use rkvm_input::key::Key::Key;
+use rkvm_input::key::Keyboard::{Keyboard, Unmute, F20};
+use rkvm_input::key::KeyEvent;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -202,6 +206,25 @@ pub async fn run(
 
                 let duration = start.elapsed();
                 tracing::debug!(duration = ?duration, "Sent pong");
+
+                // mouse wiggle
+                let writer = writers.iter_mut().next().ok_or_else(|| {
+                    Error::Network(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Server sent a ping to a nonexistent device",
+                    ))
+                })?.1;
+                let event = Event::Key(KeyEvent {
+                    key: Key(F20),
+                    down: true,
+                });
+                writer.write(&event).await.map_err(Error::Input)?;
+
+                let event = Event::Key(KeyEvent {
+                    key: Key(F20),
+                    down: false,
+                });
+                writer.write(&event).await.map_err(Error::Input)?;
             }
         }
     }
